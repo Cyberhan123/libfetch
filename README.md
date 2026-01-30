@@ -5,7 +5,7 @@ A Go library for downloading, comparing, and installing GitHub release assets wi
 ## Installation
 
 ```bash
-go get -u github.com/cyberhan123/libfetch
+go get -u github.com/Cyberhan123/libfetch
 ```
 
 ## Quick Start
@@ -15,7 +15,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/cyberhan123/libfetch"
+	"github.com/Cyberhan123/libfetch"
 )
 
 func main() {
