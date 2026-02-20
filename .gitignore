@@ -1,0 +1,12 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Go build artifacts
+vendor/
+*.test
+
+# Test output directories
+llamalib/
+sd/
+libffi/
