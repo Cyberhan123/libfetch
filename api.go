@@ -3,17 +3,16 @@ package libfetch
 import (
 	"os"
 	"time"
-
-	"github.com/hashicorp/go-getter"
 )
 
-// Api 结构体用于配置和执行下载安装操作
+// Api is used to configure and execute download/install operations.
 type Api struct {
 	installDir      string
-	progressTracker getter.ProgressTracker
+	progressTracker ProgressTracker
 	retryCount      int
 	retryDelay      time.Duration
 	proxy           string
+	token           string
 }
 
 // RepoApi 结构体用于指定 GitHub 仓库
@@ -30,12 +29,20 @@ type VersionApi struct {
 	isLatest bool
 }
 
-// NewApi 创建新的 Api 实例，默认读取环境变量获取 HTTP 代理
+// NewApi creates a new Api instance. It reads the HTTP proxy from the
+// HTTP_PROXY/HTTPS_PROXY environment variables and the GitHub token from
+// GITHUB_TOKEN/GH_TOKEN; explicit setters override both.
 func NewApi() *Api {
-	// 读取环境变量获取 HTTP 代理
+	// Read the HTTP proxy from the environment
 	proxy := os.Getenv("HTTP_PROXY")
 	if proxy == "" {
 		proxy = os.Getenv("HTTPS_PROXY")
+	}
+
+	// Read the GitHub token from the environment (gh CLI convention)
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
 	}
 
 	return &Api{
@@ -44,6 +51,7 @@ func NewApi() *Api {
 		retryCount:      3,
 		retryDelay:      3 * time.Second,
 		proxy:           proxy,
+		token:           token,
 	}
 }
 
@@ -53,8 +61,8 @@ func (a *Api) SetInstallDir(dir string) *Api {
 	return a
 }
 
-// SetProgressTracker 设置进度跟踪器
-func (a *Api) SetProgressTracker(pt getter.ProgressTracker) *Api {
+// SetProgressTracker sets the progress tracker.
+func (a *Api) SetProgressTracker(pt ProgressTracker) *Api {
 	a.progressTracker = pt
 	return a
 }
@@ -74,6 +82,14 @@ func (a *Api) SetRetryTimeDelay(seconds int) *Api {
 // SetProxy 设置 HTTP 代理
 func (a *Api) SetProxy(proxy string) *Api {
 	a.proxy = proxy
+	return a
+}
+
+// SetToken sets the GitHub personal access token used for API requests and
+// asset downloads. It takes precedence over the GITHUB_TOKEN and GH_TOKEN
+// environment variables.
+func (a *Api) SetToken(token string) *Api {
+	a.token = token
 	return a
 }
 
@@ -115,6 +131,7 @@ func (r *RepoApi) Version(version string) *VersionApi {
 func (v *VersionApi) Install(assetFunc func(version string) string) error {
 	// 创建下载器，传递所有配置
 	downloader := NewDownloaderWithConfig(v.repo, v.api.retryCount, v.api.retryDelay, v.api.proxy, v.api.progressTracker)
+	downloader.Token = v.api.token
 
 	var version string
 	var err error

@@ -4,12 +4,22 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	getter "github.com/hashicorp/go-getter"
 )
 
+// ProgressTracker tracks the progress of a download.
+//
+// It has the same method set as getter.ProgressTracker from
+// github.com/hashicorp/go-getter, which this library used before becoming
+// dependency-free, so existing tracker implementations keep working.
+type ProgressTracker interface {
+	TrackProgress(src string, currentSize, totalSize int64, stream io.ReadCloser) io.ReadCloser
+}
+
 // DefaultProgressTracker returns the default ProgressTracker that prints download progress to stdout.
-func DefaultProgressTracker() getter.ProgressTracker {
+//
+// The returned tracker is safe for concurrent use: every TrackProgress call
+// hands out an independent reader, so concurrent downloads never share state.
+func DefaultProgressTracker() ProgressTracker {
 	progFunc := func(src string, currentSize int64, totalSize int64, mibPerSec float64, complete bool) {
 		fmt.Printf("\r\x1b[Kdownloading %s... %d MiB of %d MiB (%.2f MiB/s)", src, currentSize/(1024*1024), totalSize/(1024*1024), mibPerSec)
 		if complete {
@@ -17,11 +27,30 @@ func DefaultProgressTracker() getter.ProgressTracker {
 		}
 	}
 
-	pr := progressReader{
-		progress: progFunc,
+	return &defaultTracker{progress: progFunc}
+}
+
+var _ ProgressTracker = (*defaultTracker)(nil)
+
+// defaultTracker hands out an independent progressReader per download, so a
+// single tracker can safely track concurrent downloads.
+type defaultTracker struct {
+	progress progressFunc
+}
+
+func (t *defaultTracker) TrackProgress(src string, currentSize, totalSize int64, stream io.ReadCloser) io.ReadCloser {
+	if currentSize == totalSize {
+		return nil
 	}
 
-	return getter.ProgressTracker(&pr)
+	return &progressReader{
+		src:         src,
+		currentSize: currentSize,
+		totalSize:   totalSize,
+		startTime:   time.Now(),
+		reader:      stream,
+		progress:    t.progress,
+	}
 }
 
 type progressFunc func(src string, currentSize int64, totalSize int64, mibPerSec float64, complete bool)
@@ -34,20 +63,6 @@ type progressReader struct {
 	startTime    time.Time
 	reader       io.ReadCloser
 	progress     progressFunc
-}
-
-func (pr *progressReader) TrackProgress(src string, currentSize, totalSize int64, stream io.ReadCloser) io.ReadCloser {
-	if currentSize == totalSize {
-		return nil
-	}
-
-	pr.src = src
-	pr.currentSize = currentSize
-	pr.totalSize = totalSize
-	pr.startTime = time.Now()
-	pr.reader = stream
-
-	return pr
 }
 
 const (
